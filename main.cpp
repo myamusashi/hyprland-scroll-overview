@@ -145,7 +145,7 @@ static void hkSurfaceFrame(void* thisptr, const Time::steady_tp& now) {
 }
 
 static void hkAddDamageA(void* thisptr, const CBox& box) {
-    const auto PMONITOR = (CMonitor*)thisptr;
+    const auto PMONITOR = (Monitor::CMonitor*)thisptr;
 
     if (g_pScrollOverview && g_pScrollOverview->pMonitor == PMONITOR->m_self && renderingOverview && !damageFromSurface && g_pScrollOverview->shouldSuppressRenderDamage()) {
         return;
@@ -161,7 +161,7 @@ static void hkAddDamageA(void* thisptr, const CBox& box) {
 }
 
 static void hkAddDamageB(void* thisptr, const pixman_region32_t* rg) {
-    const auto PMONITOR = (CMonitor*)thisptr;
+    const auto PMONITOR = (Monitor::CMonitor*)thisptr;
 
     if (g_pScrollOverview && g_pScrollOverview->pMonitor == PMONITOR->m_self && renderingOverview && !damageFromSurface && g_pScrollOverview->shouldSuppressRenderDamage()) {
         return;
@@ -374,7 +374,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
 
     g_pScrollAddDamageHookA = HyprlandAPI::createFunctionHook(
         SCROLLOVERVIEW_HANDLE,
-        findFnOrThrow("_ZN8CMonitor9addDamageERKN9Hyprutils4Math4CBoxE", {""}),
+        findFnOrThrow("_ZN7Monitor8CMonitor9addDamageERKN9Hyprutils4Math4CBoxE", {""}),
         (void*)hkAddDamageA);
 
     static auto P = Event::bus()->m_events.render.pre.listen([](PHLMONITOR monitor) {
