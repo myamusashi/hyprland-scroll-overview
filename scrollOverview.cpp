@@ -8,6 +8,7 @@
 #include <limits>
 #include <optional>
 #include <linux/input-event-codes.h>
+#include <state/WorkspaceState.hpp>
 #define private public
 #define protected public
 #include <hyprland/src/render/Renderer.hpp>
@@ -206,7 +207,7 @@ static bool windowHasOverviewAnimation(const PHLWINDOW& window) {
 
     return window->m_realPosition->isBeingAnimated() || window->m_realSize->isBeingAnimated() || window->m_alpha.isBeingAnimated() ||
         window->m_borderFadeAnimationProgress->isBeingAnimated() || window->m_borderAngleAnimationProgress->isBeingAnimated() || window->m_dimPercent->isBeingAnimated() ||
-        window->m_realShadowColor->isBeingAnimated();
+        window->m_shadowFadeAnimationProgress->isBeingAnimated();
 }
 
 static bool layerHasOverviewAnimation(const PHLLS& layer) {
@@ -522,13 +523,13 @@ static SOverviewShadowConfig getOverviewShadowConfig() {
 
     const auto globalRange       = ScrollOverview::Config::getValue<int>("decoration:shadow:range");
     const auto globalRenderPower = ScrollOverview::Config::getValue<int>("decoration:shadow:render_power");
-    const auto globalColor       = ScrollOverview::Config::getValue<int>("decoration:shadow:color");
+    const auto globalColor       = ScrollOverview::Config::getValue<::Config::CGradientValueData>("decoration:shadow:color");
 
     return {
         .enabled      = !!enabled,
         .range        = std::max(0, range >= 0 ? range : globalRange),
         .renderPower  = std::clamp(renderPower >= 0 ? renderPower : globalRenderPower, 1, 4),
-        .color        = CHyprColor(color >= 0 ? color : globalColor),
+        .color        = CHyprColor(color.m_colors.empty() ? color.m_colors[0] : globalColor.m_colors.empty() ? globalColor.m_colors[0] : CHyprColor{}),
     };
 }
 
@@ -1420,7 +1421,7 @@ void CScrollOverview::rebuildWorkspaceImages() {
 
     images.clear();
 
-    for (const auto& w : g_pCompositor->getWorkspaces()) {
+    for (const auto& w : State::workspaceState()->workspaces()) {
         const auto WORKSPACE = w.lock();
         if (!valid(WORKSPACE) || WORKSPACE->m_monitor != pMonitor || WORKSPACE->m_isSpecialWorkspace)
             continue;
@@ -2468,7 +2469,7 @@ void CScrollOverview::restoreWorkspaceAnimationOverrides() {
 }
 
 void CScrollOverview::forceWorkspaceAlphaVisible() {
-    for (const auto& workspace : g_pCompositor->getWorkspaces()) {
+    for (const auto& workspace : State::workspaceState()->workspaces()) {
         if (!workspace || !workspace->m_alpha)
             continue;
 
@@ -2884,7 +2885,7 @@ void CScrollOverview::requestInputFrame() {
         return;
 
     inputFramePending = true;
-    g_pCompositor->scheduleFrameForMonitor(MONITOR, Aquamarine::IOutput::AQ_SCHEDULE_CURSOR_MOVE);
+    MONITOR->scheduleFrame(Aquamarine::IOutput::AQ_SCHEDULE_CURSOR_MOVE);
 }
 
 void CScrollOverview::markBlurDirty() {

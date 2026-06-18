@@ -38,6 +38,13 @@ template <typename T>
 T getValue(const std::string& name) {
     using TValue = std::decay_t<T>;
 
+	if constexpr (std::is_same_v<TValue, ::Config::CGradientValueData>) {
+        auto& ref = valueRef<::Config::IComplexConfigValue>(name);
+        if (!ref.good())
+            return {};
+        return *sc<::Config::CGradientValueData*>(ref.ptr());
+    }
+
     if constexpr (std::is_same_v<TValue, bool>)
         return *valueRef<Hyprlang::INT>(name) != 0;
     else if constexpr (std::is_integral_v<TValue> && !std::is_same_v<TValue, bool>)
@@ -77,6 +84,6 @@ bool         getBlur();
 int          getShadowEnabled();
 int          getShadowRange();
 int          getShadowRenderPower();
-int64_t      getShadowColor();
+::Config::CGradientValueData getShadowColor();
 
 }
