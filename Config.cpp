@@ -208,7 +208,7 @@ bool getBlur() {
     if (!CUSTOM || !*CUSTOM)
         return {};
 
-    const auto* const GAPS = static_cast<::Config::CCssGapData*>((*CUSTOM)->getData());
+    const auto* const GAPS = sc<::Config::CCssGapData*>((*CUSTOM)->getData());
     return GAPS ? *GAPS : ::Config::CCssGapData{};
 }
 

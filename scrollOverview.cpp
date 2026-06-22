@@ -657,14 +657,14 @@ static Layout::Tiled::CScrollingAlgorithm* overviewScrollingAlgorithmForTarget(c
     if (!target || !target->space() || !target->space()->algorithm())
         return nullptr;
 
-    return dynamic_cast<Layout::Tiled::CScrollingAlgorithm*>(target->space()->algorithm()->m_tiled.get());
+    return dc<Layout::Tiled::CScrollingAlgorithm*>(target->space()->algorithm()->m_tiled.get());
 }
 
 static bool isWorkspaceScrolling(const PHLWORKSPACE& workspace) {
     if (!workspace || !workspace->m_space || !workspace->m_space->algorithm())
         return false;
 
-    return dynamic_cast<Layout::Tiled::CScrollingAlgorithm*>(workspace->m_space->algorithm()->m_tiled.get()) != nullptr;
+    return dc<Layout::Tiled::CScrollingAlgorithm*>(workspace->m_space->algorithm()->m_tiled.get()) != nullptr;
 }
 
 static bool moveOverviewScrollingTargetToHorizontalEdge(const SP<Layout::ITarget>& target, int side) {

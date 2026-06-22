@@ -133,7 +133,7 @@ static void roundStandaloneWindowPassElements(const PHLWINDOW& window, PHLMONITO
         if (!passElement.element)
             continue;
 
-        auto* surfacePassElement = dynamic_cast<CSurfacePassElement*>(passElement.element.get());
+        auto* surfacePassElement = dc<CSurfacePassElement*>(passElement.element.get());
         if (!surfacePassElement || surfacePassElement->m_data.pWindow != window || surfacePassElement->m_data.popup)
             continue;
 
@@ -222,7 +222,7 @@ static void blockOverviewWindowBlurOptimization(const PHLWINDOW& window, size_t 
         if (!passElement.element)
             continue;
 
-        auto* surfacePassElement = dynamic_cast<CSurfacePassElement*>(passElement.element.get());
+        auto* surfacePassElement = dc<CSurfacePassElement*>(passElement.element.get());
         if (!surfacePassElement || surfacePassElement->m_data.pWindow != window)
             continue;
 
@@ -656,7 +656,7 @@ static void renderOverviewGroupTabs(PHLMONITOR monitor, const PHLWINDOW& window,
     if (!monitor || !window || !window->m_group || window->m_group->size() < 1)
         return;
 
-    auto* const GROUPBAR = dynamic_cast<CHyprGroupBarDecoration*>(window->getDecorationByType(DECORATION_GROUPBAR));
+    auto* const GROUPBAR = dc<CHyprGroupBarDecoration*>(window->getDecorationByType(DECORATION_GROUPBAR));
     if (!GROUPBAR)
         return;
 
