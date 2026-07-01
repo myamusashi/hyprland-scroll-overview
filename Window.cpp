@@ -394,7 +394,7 @@ static void renderOverviewHyprbarDecoration(SOverviewCustomDecorationRenderState
 }
 
 static void renderOverviewWindowShadow(PHLMONITOR monitor, const PHLWINDOW& window, const CBox& windowBox, const SOverviewWindowMetrics& metrics, bool selected) {
-    if (!monitor || !window || (!window->m_isMapped && !window->m_fadingOut))
+    if (!monitor || !window || (!window->m_isMapped))
         return;
 
     const auto PSHADOWS      = ScrollOverview::Config::getValue<int>("decoration:shadow:enabled");
@@ -424,9 +424,13 @@ static void renderOverviewWindowShadow(PHLMONITOR monitor, const PHLWINDOW& wind
     if (shadowBox.width < 1 || shadowBox.height < 1)
         return;
 
-    const auto shadowColor = window->m_realShadowColor->value();
-    if (shadowColor.a == 0.F)
-        return;
+	const auto& colors = window->m_realShadowColor.m_colors;
+	if (colors.empty())
+		return;
+
+    const auto shadowColor = colors[0];
+	if (shadowColor.a == 0.F)
+		return;
 
     g_pHyprRenderer->m_renderPass.add(makeUnique<COverviewShadowPassElement>(COverviewShadowPassElement::SData{
         .monitor       = monitor,
@@ -443,7 +447,7 @@ static void renderOverviewWindowShadow(PHLMONITOR monitor, const PHLWINDOW& wind
 }
 
 static void renderOverviewWindowBorder(PHLMONITOR monitor, const PHLWINDOW& window, const CBox& windowBox, const SOverviewWindowMetrics& metrics, bool selected) {
-    if (!monitor || !window || (!window->m_isMapped && !window->m_fadingOut))
+    if (!monitor || !window || (!window->m_isMapped))
         return;
 
     if (metrics.borderSize <= 0.F)

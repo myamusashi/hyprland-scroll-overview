@@ -8,6 +8,7 @@
 #include <limits>
 #include <optional>
 #include <linux/input-event-codes.h>
+#include <state/WorkspaceState.hpp>
 #define private public
 #define protected public
 #include <hyprland/src/render/Renderer.hpp>
@@ -29,13 +30,16 @@
 #include <hyprland/src/layout/space/Space.hpp>
 #include <hyprland/src/layout/target/Target.hpp>
 #include <hyprland/src/layout/algorithm/tiled/scrolling/ScrollingAlgorithm.hpp>
-#include <hyprland/src/managers/cursor/CursorShapeOverrideController.hpp>
+#include <hyprland/src/desktop/state/GlobalWindowController.hpp>
+#include <hyprland/src/pointer/cursor/CursorShapeOverrideController.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/desktop/view/Group.hpp>
 #include <hyprland/src/desktop/view/Window.hpp>
 #include <hyprland/src/desktop/view/WLSurface.hpp>
 #include <hyprland/src/desktop/view/LayerSurface.hpp>
 #include <hyprland/src/desktop/view/Popup.hpp>
+#include <hyprland/src/desktop/state/WindowState.hpp>
+#include <hyprland/src/desktop/state/ViewState.hpp>
 #include <hyprland/src/protocols/LayerShell.hpp>
 #include <hyprland/src/devices/IKeyboard.hpp>
 #include <hyprland/src/helpers/math/Math.hpp>
@@ -135,10 +139,10 @@ static bool isPointerOnTopLayer(PHLMONITOR monitor) {
     Vector2D   surfaceCoords;
     PHLLS      layerSurface;
 
-    if (g_pCompositor->vectorToLayerSurface(MOUSECOORDS, &monitor->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY], &surfaceCoords, &layerSurface))
+    if (Desktop::viewState()->hitTest().layerSurfaceAt(MOUSECOORDS, &monitor->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY], &surfaceCoords, &layerSurface))
         return true;
 
-    return !!g_pCompositor->vectorToLayerSurface(MOUSECOORDS, &monitor->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_TOP], &surfaceCoords, &layerSurface);
+    return !!Desktop::viewState()->hitTest().layerSurfaceAt(MOUSECOORDS, &monitor->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_TOP], &surfaceCoords, &layerSurface);
 }
 
 static PHLWINDOW getOverviewWindowToShow(const PHLWINDOW& window) {
@@ -212,7 +216,7 @@ static bool windowHasOverviewAnimation(const PHLWINDOW& window) {
 
     return window->m_realPosition->isBeingAnimated() || window->m_realSize->isBeingAnimated() || window->m_alpha.isBeingAnimated() ||
         window->m_borderFadeAnimationProgress->isBeingAnimated() || window->m_borderAngleAnimationProgress->isBeingAnimated() || window->m_dimPercent->isBeingAnimated() ||
-        window->m_realShadowColor->isBeingAnimated();
+        window->m_shadowFadeAnimationProgress->isBeingAnimated();
 }
 
 static bool layerHasOverviewAnimation(const PHLLS& layer) {
@@ -541,13 +545,13 @@ static SOverviewShadowConfig getOverviewShadowConfig() {
 
     const auto globalRange       = ScrollOverview::Config::getValue<int>("decoration:shadow:range");
     const auto globalRenderPower = ScrollOverview::Config::getValue<int>("decoration:shadow:render_power");
-    const auto globalColor       = ScrollOverview::Config::getValue<int>("decoration:shadow:color");
+    const auto globalColor       = ScrollOverview::Config::getValue<::Config::CGradientValueData>("decoration:shadow:color");
 
     return {
         .enabled      = !!enabled,
         .range        = std::max(0, range >= 0 ? range : globalRange),
         .renderPower  = std::clamp(renderPower >= 0 ? renderPower : globalRenderPower, 1, 4),
-        .color        = CHyprColor(color >= 0 ? color : globalColor),
+        .color        = CHyprColor(color.m_colors.empty() ? color.m_colors[0] : globalColor.m_colors.empty() ? globalColor.m_colors[0] : CHyprColor{}),
     };
 }
 
@@ -819,7 +823,7 @@ CScrollOverview::~CScrollOverview() {
     restoreForcedWindowVisibility();
     restoreForcedLayerVisibility();
     images.clear(); // otherwise we get a vram leak
-    Cursor::overrideController->unsetOverride(Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
+    Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
     if (const auto MONITOR = pMonitor.lock())
         MONITOR->m_blurFBDirty = true;
 }
@@ -1393,7 +1397,7 @@ CScrollOverview::CScrollOverview(PHLWORKSPACE startedOn_, bool swipe_) : started
     if (!usesSubmapKeybinds)
         keyboardKeyHook = Event::bus()->m_events.input.keyboard.key.listen(onKeyboardKey);
 
-    Cursor::overrideController->setOverride("left_ptr", Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
+    Pointer::Cursor::overrideController->setOverride("left_ptr", Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
 
     redrawAll();
 
@@ -1642,7 +1646,7 @@ void CScrollOverview::rebuildWorkspaceImages() {
 
     images.clear();
 
-    for (const auto& w : g_pCompositor->getWorkspaces()) {
+    for (const auto& w : State::workspaceState()->workspaces()) {
         const auto WORKSPACE = w.lock();
         if (!valid(WORKSPACE) || WORKSPACE->m_monitor != pMonitor || WORKSPACE->m_isSpecialWorkspace)
             continue;
@@ -2261,7 +2265,7 @@ void CScrollOverview::focusMostVisibleScrollingWindow(const PHLWORKSPACE& worksp
         }
     }
 
-    for (const auto& windowRef : g_pCompositor->m_windows) {
+    for (const auto& windowRef : Desktop::windowState()->windows()) {
         const auto WINDOW = getOverviewWindowToShow(windowRef);
         if (!shouldShowOverviewWindow(WINDOW) || WINDOW->m_workspace != workspace || WINDOW->m_isFloating || !WINDOW->layoutTarget())
             continue;
@@ -2489,7 +2493,7 @@ void CScrollOverview::endWindowDrag() {
     }
 
     if (RETILEONEND && MOVEWORKSPACE) {
-        g_pCompositor->moveWindowToWorkspaceSafe(WINDOW, DROPWORKSPACE);
+        Desktop::globalWindowController()->moveWindowToWorkspace(WINDOW, DROPWORKSPACE);
         movedToWorkspace = true;
 
         if (DROPSCROLLINGLAYOUT) {
@@ -2523,7 +2527,7 @@ void CScrollOverview::endWindowDrag() {
         if (const auto WORKSPACE = SPACE->workspace())
             WORKSPACE->updateWindows();
     } else if (WINDOW && MOVEWORKSPACE) {
-        g_pCompositor->moveWindowToWorkspaceSafe(WINDOW, DROPWORKSPACE);
+        Desktop::globalWindowController()->moveWindowToWorkspace(WINDOW, DROPWORKSPACE);
         movedToWorkspace = true;
         if (TARGET) {
             const auto GLOBALSIZE = DRAGBOX.size() * (1.F / (std::max(scale->value(), 0.01F) * std::max(MONITOR ? MONITOR->m_scale : 1.F, 0.01F)));
@@ -2577,7 +2581,7 @@ void CScrollOverview::endWindowDrag() {
     dragGrabOffsetLocal           = Vector2D{};
     dragOriginalBox               = CBox{};
     rebuildPending                = true;
-    if (movedToWorkspace && ORIGINALWORKSPACE && !ORIGINALWORKSPACE->m_isSpecialWorkspace && !ORIGINALWORKSPACE->isPersistent() && ORIGINALWORKSPACE->getWindows() == 0) {
+    if (movedToWorkspace && ORIGINALWORKSPACE && !ORIGINALWORKSPACE->m_isSpecialWorkspace && !ORIGINALWORKSPACE->isPersistent() && ORIGINALWORKSPACE->getWindowCount() == 0) {
         pendingRemovedWorkspace = ORIGINALWORKSPACE;
         rebuildPending          = false;
         onWorkspaceChange();
@@ -2936,7 +2940,7 @@ bool CScrollOverview::moveSelection(const std::string& direction) {
         }
     }
 
-    const bool WINDOWSELECTIONMOVED = bestCandidate;
+    const auto WINDOWSELECTIONMOVED = bestCandidate;
     if (!WINDOWSELECTIONMOVED)
         shouldMoveWorkspace = true;
 
@@ -3162,7 +3166,7 @@ void CScrollOverview::restoreWorkspaceAnimationOverrides() {
 }
 
 void CScrollOverview::forceWorkspaceAlphaVisible() {
-    for (const auto& workspace : g_pCompositor->getWorkspaces()) {
+    for (const auto& workspace : State::workspaceState()->workspaces()) {
         if (!workspace || !workspace->m_alpha)
             continue;
 
@@ -3503,10 +3507,10 @@ void CScrollOverview::redrawAll(bool forcelowres) {
     }
 
     std::vector<PHLWINDOW> addedWindows;
-    addedWindows.reserve(g_pCompositor->m_windows.size());
+    addedWindows.reserve(Desktop::windowState()->windows().size());
 
     std::vector<PHLWINDOW> addedPinnedFloatingWindows;
-    addedPinnedFloatingWindows.reserve(g_pCompositor->m_windows.size());
+    addedPinnedFloatingWindows.reserve(Desktop::windowState()->windows().size());
 
     const auto addOverviewWindow = [&](const PHLWINDOW& window) {
         const auto overviewWindow = getOverviewWindowToShow(window);
@@ -3536,7 +3540,7 @@ void CScrollOverview::redrawAll(bool forcelowres) {
         pinnedFloatingWindows.emplace_back(overviewWindow);
     };
 
-    for (const auto& window : g_pCompositor->m_windows) {
+    for (const auto& window : Desktop::windowState()->windows()) {
         if (getOverviewWindowToShow(window) != window)
             continue;
 
@@ -3544,7 +3548,7 @@ void CScrollOverview::redrawAll(bool forcelowres) {
         addPinnedFloatingWindow(window);
     }
 
-    for (const auto& window : g_pCompositor->m_windows) {
+    for (const auto& window : Desktop::windowState()->windows()) {
         if (getOverviewWindowToShow(window) == window)
             continue;
 
@@ -3570,7 +3574,7 @@ void CScrollOverview::requestInputFrame() {
         return;
 
     inputFramePending = true;
-    g_pCompositor->scheduleFrameForMonitor(MONITOR, Aquamarine::IOutput::AQ_SCHEDULE_CURSOR_MOVE);
+    MONITOR->scheduleFrame(Aquamarine::IOutput::AQ_SCHEDULE_CURSOR_MOVE);
 }
 
 void CScrollOverview::markBlurDirty() {
@@ -4205,7 +4209,7 @@ void CScrollOverview::onWorkspaceChange() {
     const bool INSERTEDWORKSPACE = std::find(previousWorkspaceIDs.begin(), previousWorkspaceIDs.end(), NEWWORKSPACE->m_id) == previousWorkspaceIDs.end();
     const auto REQUESTEDREMOVEDWORKSPACE = pendingRemovedWorkspace.lock();
     const bool SHOULDREMOVEPREVIOUSWORKSPACE =
-        previousStartedOn && previousStartedOn != NEWWORKSPACE && !previousStartedOn->m_isSpecialWorkspace && !previousStartedOn->isPersistent() && previousStartedOn->getWindows() == 0;
+        previousStartedOn && previousStartedOn != NEWWORKSPACE && !previousStartedOn->m_isSpecialWorkspace && !previousStartedOn->isPersistent() && previousStartedOn->getWindowCount() == 0;
     const auto REMOVEDWORKSPACE = REQUESTEDREMOVEDWORKSPACE ? REQUESTEDREMOVEDWORKSPACE : SHOULDREMOVEPREVIOUSWORKSPACE ? previousStartedOn : PHLWORKSPACE{};
 
     pendingRemovedWorkspace = REMOVEDWORKSPACE;
