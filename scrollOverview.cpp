@@ -1497,7 +1497,7 @@ CScrollOverview::CScrollOverview(PHLWORKSPACE startedOn_, bool swipe_, PHLMONITO
     };
 
     auto onKeyboardKey = [this](IKeyboard::SKeyEvent event, Event::SCallbackInfo& info) {
-        if (closing || event.state != WL_KEYBOARD_KEY_STATE_PRESSED || activeScrollOverview().get() != this)
+        if (closing || event.state != WL_KEYBOARD_KEY_STATE_PRESSED || scrollOverviewForMonitor(Desktop::focusState()->monitor()).get() != this)
             return;
 
         if (isTopLayerFocused(pMonitor.lock()))
